@@ -1,5 +1,6 @@
 # 项目目录（每个项目内部独立 git init）
-projects/
+projects/*
+!projects/.gitkeep
 
 # OS
 .DS_Store

@@ -122,7 +122,7 @@
 
 1. cd 到 `projects/<project-name>/`
 2. 读取该目录下的 `CLAUDE.md`（由 design-agent 定制）
-3. **从此刻起，完全按项目 CLAUDE.md 的指令行事**，不再参考本文件
+3. **从此刻起，完全按项目 CLAUDE.md 的指令行事**，不再参考本文件。如果元仓库指令和项目指令有任何冲突，以项目 CLAUDE.md 为准
 4. 创建 Agent Team，按项目 CLAUDE.md 中的角色定义 spawn teammates
 5. 按 `docs/roadmap.md` 中的 Phase 顺序推进开发
 

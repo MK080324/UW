@@ -8,7 +8,7 @@ name: <role>-dev
 description: 负责 [项目名] 的 [角色描述]，包括 [核心职责列表]
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: opus
-maxTurns: 150
+maxTurns: 100  # Design Subagent 可根据项目复杂度调整（范围 80-150）
 effort: max
 ---
 

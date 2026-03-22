@@ -1,0 +1,16 @@
+# 项目目录（每个项目内部独立 git init）
+projects/
+
+# OS
+.DS_Store
+
+# Node
+node_modules/
+
+# Rust
+target/
+
+# Editor
+*.swp
+*.swo
+*~

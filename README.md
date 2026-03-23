@@ -1,4 +1,4 @@
-# Automatic-Workflow
+# Development-Workflow
 
 一个元工作流：你提交一份需求文档，Claude Code 全自动完成技术选型、架构设计、路线图规划、工作流定制和完整开发。
 

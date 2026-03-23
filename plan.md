@@ -4,7 +4,7 @@
 
 ### 核心理念
 
-Automatic-Workflow 是一个**元工作流仓库**。用户提交需求文档后，Claude 全自动完成从技术选型到方案实施到测试验证到最终交付的完整流程。人类介入被压缩到最少：只在需求确认阶段和最终交付时参与。
+Development-Workflow 是一个**元工作流仓库**。用户提交需求文档后，Claude 全自动完成从技术选型到方案实施到测试验证到最终交付的完整流程。人类介入被压缩到最少：只在需求确认阶段和最终交付时参与。
 
 ### 两阶段架构
 
@@ -108,7 +108,7 @@ Automatic-Workflow 是一个**元工作流仓库**。用户提交需求文档后
 ## 三、目录结构
 
 ```
-Automatic-Workflow/
+Development-Workflow/
 ├── CLAUDE.md                              # 元工作流 Lead 指令（阶段 A + B）
 ├── .claude/
 │   ├── settings.json                      # 启用 Agent Teams

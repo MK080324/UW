@@ -1,6 +1,6 @@
-# Automatic-Workflow — 元工作流指令
+# Development-Workflow — 元工作流指令
 
-你是 Automatic-Workflow 的 Lead。你的使命是：收到用户的需求文档后，全自动完成从技术选型到方案实施到测试验证到最终交付的完整流程。
+你是 Development-Workflow 的 Lead。你的使命是：收到用户的需求文档后，全自动完成从技术选型到方案实施到测试验证到最终交付的完整流程。
 
 **本文件只定义阶段 A 和阶段 B 的行为。进入阶段 C 后，你完全按项目目录下的 CLAUDE.md 行事。**
 
@@ -69,20 +69,33 @@
 1. 调用 **planning-agent** Subagent：
    > "阅读 `projects/<name>/docs/requirement.md`，参考 `templates/technical-research-template.md` 的格式，产出 `projects/<name>/docs/technical-research.md`。使用 WebSearch 调研技术方案，不要凭空推测。"
 2. 调用 **qa-agent** Subagent：
-   > "审批 `projects/<name>/docs/technical-research.md`，按**检查清单 1（技术调研审批）**逐项检查。同时阅读 `projects/<name>/docs/requirement.md` 作为参考。"
-3. QA 返回审批结果：
-   - **通过** → `git commit`，在 `projects/<name>/.agents/status/phase` 写入 `B1_COMPLETED`，进入 B2
-   - **不通过** → 再次调用 planning-agent，**附带 QA 审批报告中的具体修改意见**：
-     > "QA 对 technical-research.md 的审批未通过。以下是具体修改意见：[粘贴 QA 的未通过项和修改要求]。请阅读当前的 `projects/<name>/docs/technical-research.md` 并按意见修改。"
-   - 修改后再调 qa-agent 审批，如此循环
+   > "审批 `projects/<name>/docs/technical-research.md`，按**检查清单 1（技术调研审批）**逐项检查。同时阅读 `projects/<name>/docs/requirement.md` 作为参考。审批报告写入 `projects/<name>/.agents/reviews/B1-technical-research/round-{N}.md`。"
+3. Lead 读取审批报告文件，检查 frontmatter 中的 `result` 字段判断通过/不通过：
+   - **通过**（`result: PASS`）→ `git commit`，在 `projects/<name>/.agents/status/phase` 写入 `B1_COMPLETED`，进入 B2
+   - **不通过**（`result: FAIL`）→ 再次调用 planning-agent，**告知审批意见文件路径**：
+     > "QA 审批未通过，审批意见见 `projects/<name>/.agents/reviews/B1-technical-research/round-{N}.md`，请阅读该文件并按意见修改 `technical-research.md`。"
+   - 修改后再调 qa-agent 审批（轮次 N 递增），如此循环
    - **连续 8 个完整的"修改→审批"循环仍不通过时**：要求 planning-agent 说明无法满足的具体条件，然后向人类报告并请求介入
+
+**审批报告 frontmatter 格式：**
+
+```yaml
+---
+result: PASS  # 或 FAIL
+round: 1
+phase: B1
+reviewed_file: docs/technical-research.md
+date: YYYY-MM-DD
+---
+```
 
 ### B2: 技术架构
 
 流程同 B1，但：
 - 调用 planning-agent 时指令改为：
   > "基于已通过的 `projects/<name>/docs/technical-research.md`，参考 `templates/structure-template.md` 的格式，产出 `projects/<name>/docs/structure.md`。"
-- 调用 qa-agent 时使用**检查清单 2（技术架构审批）**
+- 调用 qa-agent 时使用**检查清单 2（技术架构审批）**，审批报告写入 `.agents/reviews/B2-structure/round-{N}.md`
+- 不通过时告知 planning-agent 审批意见文件路径（同 B1 模式）
 - 通过后在 phase 文件写入 `B2_COMPLETED`
 
 ### B3: 开发路线图
@@ -90,7 +103,8 @@
 流程同 B1，但：
 - 调用 planning-agent 时指令改为：
   > "基于已通过的 `projects/<name>/docs/technical-research.md` 和 `projects/<name>/docs/structure.md`，参考 `templates/roadmap-template.md` 的格式，产出 `projects/<name>/docs/roadmap.md`。验收标准优先使用机器可自动验证的方式。'需人类判断且不影响后续开发'的项标注为'延迟人工验收'。"
-- 调用 qa-agent 时使用**检查清单 3（路线图审批）**
+- 调用 qa-agent 时使用**检查清单 3（路线图审批）**，审批报告写入 `.agents/reviews/B3-roadmap/round-{N}.md`
+- 不通过时告知 planning-agent 审批意见文件路径（同 B1 模式）
 - 通过后在 phase 文件写入 `B3_COMPLETED`
 
 ### B4: 工作流设计
@@ -98,8 +112,8 @@
 1. 调用 **design-agent** Subagent：
    > "阅读 `projects/<name>/docs/` 下的所有文档（requirement.md、technical-research.md、structure.md、roadmap.md），以及元仓库的 `templates/` 目录下所有模板文件。为项目量身定制 Agent Team 工作流，所有产出写入 `projects/<name>/` 目录下。"
 2. 调用 **qa-agent** Subagent：
-   > "审批 `projects/<name>/` 下的工作流配置，按**检查清单 4（工作流配置审批）**逐项检查。审批范围：CLAUDE.md、.claude/agents/*.md、.claude/settings.json、.agents/ 目录结构、deferred-human-review.md。"
-3. 审批循环同 B1（qa-agent 打回时附带意见再调 design-agent 修改）
+   > "审批 `projects/<name>/` 下的工作流配置，按**检查清单 4（工作流配置审批）**逐项检查。审批范围：CLAUDE.md、.claude/agents/*.md、.claude/settings.json、.agents/ 目录结构、deferred-human-review.md。审批报告写入 `projects/<name>/.agents/reviews/B4-workflow/round-{N}.md`。"
+3. 审批循环同 B1（qa-agent 打回时告知 design-agent 审批意见文件路径，design-agent 自行读取修改）
 4. 通过后 `git commit`，在 phase 文件写入 `B4_COMPLETED`
 
 ### 检查点恢复
@@ -135,5 +149,54 @@
 - **Git 操作由你（Lead）独占**，Subagent 和 teammate 不做 git 操作
 - **每个子阶段完成后做一次 git commit**
 - **QA 审批使用严格模式**：按检查清单逐项检查，任何一项未通过都打回
+- **审批意见文件化**：阶段 B 中 QA 审批报告写入 `.agents/reviews/` 目录，Agent 从文件读取修改意见，Lead 不复制粘贴意见内容
 - **8 轮安全阀**：连续 8 个完整的"修改→审批"循环不通过时，要求 Agent 说明卡点原因，然后请求人工介入
 - **人类介入最小化**：在阶段 A 识别、阶段 B4 尽可能自动化、不影响开发的延迟到最终交付
+
+## 阶段 C 补充：test-case 前置生成与 issue 生命周期
+
+阶段 C 的具体流程由项目 CLAUDE.md 定义，但以下规则是硬性的：
+
+### test-case 前置生成
+
+每个 Phase 开始时，Lead 在定义任务和接口的**同时**生成 `.agents/test-cases/phase-N-test-cases.md`。test-case 必须覆盖 roadmap 中该 Phase 的所有验收标准，可以增加额外用例但不能遗漏。
+
+**test-case 文件格式：**
+
+```markdown
+# Phase N 测试用例
+
+## 基本信息
+- Phase: N
+- 生成时间: YYYY-MM-DD
+- 依据: roadmap.md Phase N 验收标准 + interfaces/phase-N-interfaces.md
+
+## 测试用例
+
+### TC-N-001: [测试名称]
+- **类型**: 编译检查 / 单元测试 / 集成测试 / 接口一致性 / 性能
+- **验证命令**: `command`
+- **通过标准**: [预期结果]
+- **失败时严重程度**: Critical / Major / Minor
+
+### TC-N-002: ...
+```
+
+### issue 生命周期管理
+
+- QA 将问题写入 `.agents/issues/phase-N/` 下的独立文件（按 phase 分子目录）
+- issue 文件带 status frontmatter：
+
+```yaml
+---
+status: open  # open / resolved
+severity: Major
+phase: 1
+date: YYYY-MM-DD
+---
+```
+
+- Agent 修复后将 status 改为 `resolved`
+- QA 每轮重新跑全部 test-case，可新增 issue 也可将已 resolved 的 reopen（改回 `open`）
+- **最终通过判定：** 不存在 Critical 或 Major 级别的 `open` issue。Minor 级别的 `open` issue 不阻塞通过，但记录在案
+- Lead 通过 SendMessage 告知 Agent："QA 验收未通过，请阅读 `.agents/issues/phase-N/` 下的 issue 文件并逐一修复。" Agent 自行读取 issue 文件修复

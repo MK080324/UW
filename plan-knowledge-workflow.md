@@ -116,8 +116,8 @@ Knowledge Workflow 覆盖的场景分类：
 +----------------------------------------------+
 |  阶段 C: 执行产出（Agent Teams 并行协作）        |
 |                                               |
-|  Lead cd 到 projects/<name>/                  |
-|  读取项目 CLAUDE.md，创建唯一的 Agent Team       |
+|  人类新开 session: cd projects/<name>/ && claude |
+|  项目 CLAUDE.md 自动加载，创建 Agent Team        |
 |  按 deliverables-plan 全自动产出                |
 |                                               |
 |  每个 Phase:                                   |
@@ -360,14 +360,27 @@ B2 的核心创新：**不固定结构含义，由场景类型驱动**。
 
 ### 6.1 进入阶段 C
 
-Lead 在阶段 B 全部完成后：
-1. cd 到 `projects/<name>/`
-2. 读取该目录下的 CLAUDE.md（由 Design Subagent 定制）
-3. **从此刻起，完全按项目 CLAUDE.md 的指令行事**，不再参考元仓库 CLAUDE.md
-4. 创建 Agent Team，按项目 CLAUDE.md 中的角色定义 spawn teammates
-5. 按 `docs/deliverables-plan.md` 中的 Phase 顺序推进产出
+**阶段 B 全部完成后，必须新开一个 Claude Code session 才能进入阶段 C。**
 
-**上下文管理**：到达阶段 C 时，之前的对话可能已被 auto-compaction 压缩。所有必要信息都已持久化为文件，Lead 完全依赖读取文件获取上下文，不依赖对话记忆。
+**原因：** 项目目录下的 `.claude/agents/*.md`、`.claude/settings.json` 和 `CLAUDE.md` 只有当 Claude Code 以该目录作为工作目录启动时才会被正确加载。在元仓库中 `cd` 到项目目录是无效的——Claude Code 加载的仍然是元仓库的 `.claude/` 配置，项目定制的 Agent 定义不会被识别。
+
+**Lead 的操作：** 阶段 B 全部完成后，Lead 向人类输出提示：
+
+```
+阶段 B 已全部完成。请在项目目录下新开 Claude Code session 进入阶段 C：
+
+cd projects/<name>/ && claude
+```
+
+**新 session 启动后：**
+1. 项目 `CLAUDE.md`（由 Design Subagent 定制）会被自动加载为项目指令
+2. 项目 `.claude/agents/*.md` 会被正确识别为可用 agent
+3. 项目 `.claude/settings.json` 会自动生效
+4. **从此刻起，完全按项目 CLAUDE.md 的指令行事**，不再参考元仓库 CLAUDE.md
+5. 创建 Agent Team，按项目 CLAUDE.md 中的角色定义 spawn teammates
+6. 按 `docs/deliverables-plan.md` 中的 Phase 顺序推进产出
+
+**上下文隔离：** 新开 session 天然实现了上下文窗口隔离——阶段 A/B 的对话历史不会占用阶段 C 的上下文空间。所有必要信息都已在阶段 B 持久化为文件，Lead 完全依赖读取文件获取上下文，不依赖对话记忆。
 
 ### 6.2 Team 组成（由 Design Subagent 动态决定）
 

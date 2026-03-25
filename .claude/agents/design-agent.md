@@ -61,13 +61,22 @@ effort: max
 
 ### 3. .claude/settings.json
 
+阶段 C 在项目目录下新开 session，因此项目的 settings.json 必须包含 Lead 执行 git 操作所需的权限。
+
 ```json
 {
+  "permissions": {
+    "allow": [
+      "Bash(git:*)"
+    ]
+  },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }
 ```
+
+> **注意**：`Bash(git:*)` 是必须的，因为 Lead 在阶段 C 负责所有 git commit 操作。其他 Bash 权限（如 `Bash(npm:*)`、`Bash(python:*)`）根据项目技术栈按需添加。Agent 级别的工具权限在各 Agent 配置文件的 `tools` 字段中单独控制。
 
 ### 4. .agents/ 目录初始化
 

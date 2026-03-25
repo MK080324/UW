@@ -28,6 +28,19 @@ round: 1
 phase: B1
 reviewed_file: docs/technical-research.md
 date: YYYY-MM-DD
+blocking_issues:                        # result 为 FAIL 时必填，PASS 时留空列表
+  - id: B1-R1-01                        # ID 规则：B{阶段}-R{轮次}-{序号}
+    description: "候选方案缺少性能对比数据"
+    severity: major                     # major / minor
+  - id: B1-R1-02
+    description: "依赖版本未锁定"
+    severity: minor
+resolved_since_last_round:              # 上轮存在、本轮已解决的问题（首轮留空列表）
+  - ref: B1-R0-01                       # 引用上轮的 issue ID
+    description: "技术栈兼容性已补充"
+carry_forward_from_last_round:          # 上轮存在、本轮仍未解决的问题（首轮留空列表）
+  - ref: B1-R0-03
+    description: "错误处理策略未定义"
 ---
 
 ## QA 审批报告
@@ -50,6 +63,27 @@ date: YYYY-MM-DD
 ```
 
 **关键：** frontmatter 中的 `result` 字段必须准确反映审批结果（`PASS` 或 `FAIL`），Lead 通过此字段机器判定。
+
+### ID 规则
+
+- **格式**：`B{阶段}-R{轮次}-{序号}`，例如 `B1-R3-02` 表示 B1 阶段第 3 轮的第 2 个问题
+- **序号**从 01 开始，按检查清单中发现问题的顺序递增
+
+### 字段填写说明
+
+- **blocking_issues**：列出本轮审批发现的所有阻塞问题。`result` 为 FAIL 时必须至少有一项；为 PASS 时留空列表 `[]`
+- **resolved_since_last_round**：列出上一轮存在但本轮已被修复的问题。`ref` 字段引用上轮 `blocking_issues` 中的 `id`。首轮审批留空列表 `[]`
+- **carry_forward_from_last_round**：列出上一轮存在、本轮仍未解决的问题。`ref` 字段引用上轮 `blocking_issues` 中的 `id`。首轮审批留空列表 `[]`
+- **upstream_concern**（可选）：当审批中发现问题根源在前面已通过的子阶段时填写。仅在 `confidence: high` 时 Lead 升级给人类
+
+```yaml
+upstream_concern:                       # 可选，仅在发现前期假设有误时填写
+  target_phase: B1                      # 问题根源所在的阶段
+  suspect_assumption: "调研结论认为 X 库支持功能 Y，但架构设计中发现其 API 不支持"
+  confidence: high                      # high → Lead 升级给人类; medium → 记录但继续推进
+```
+
+**Planning Agent 效率提升**：有了结构化 frontmatter，Planning Agent 修改时只需读取最新一份审批报告的 frontmatter，通过 `blocking_issues` + `carry_forward` 即可获取所有待解决问题，不需要阅读历史审批报告。Bootstrapping 成本从 O(N轮) 降到 O(1)。
 
 ## 审批检查清单
 

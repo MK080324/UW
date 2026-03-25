@@ -153,7 +153,13 @@ Knowledge-Workflow/
 │       └── qa-agent.md                    # Subagent: 质量审批 (sonnet, 60 turns)
 ├── templates/
 │   ├── topic-research-template.md         # B1: 主题调研模板
-│   ├── analysis-structure-template.md     # B2: 分析结构模板（含多场景适配指引）
+│   ├── analysis-structure-template.md     # B2: 分析结构模板索引
+│   ├── analysis-structure-research.md     # B2: 调研分析场景模板
+│   ├── analysis-structure-strategy.md     # B2: 策略规划场景模板
+│   ├── analysis-structure-education.md    # B2: 教育培训场景模板
+│   ├── analysis-structure-writing.md      # B2: 写作编辑场景模板
+│   ├── analysis-structure-evaluation.md   # B2: 评判审核场景模板
+│   ├── analysis-structure-scheduling.md   # B2: 日程规划场景模板
 │   ├── deliverables-plan-template.md      # B3: 产出物规划模板
 │   ├── project-claude-md-template.md      # B4: 项目 CLAUDE.md 模板
 │   ├── writer-agent-template.md           # B4: Writer Agent 配置模板
@@ -289,12 +295,27 @@ round: 1
 phase: B1
 reviewed_file: docs/topic-research.md
 date: YYYY-MM-DD
+blocking_issues:                        # result 为 FAIL 时必填，PASS 时留空列表
+  - id: B1-R1-01                        # ID 规则：B{阶段}-R{轮次}-{序号}
+    description: "信息源缺少官方文件引用"
+    severity: major                     # major / minor
+  - id: B1-R1-02
+    description: "时间线缺少 2024 年后的事件"
+    severity: minor
+resolved_since_last_round:              # 上轮存在、本轮已解决的问题（首轮留空列表）
+  - ref: B1-R0-01                       # 引用上轮的 issue ID
+    description: "多视角呈现已补充"
+carry_forward_from_last_round:          # 上轮存在、本轮仍未解决的问题（首轮留空列表）
+  - ref: B1-R0-03
+    description: "数据时效性标注缺失"
 ---
 ```
 
+Research Subagent 返回结果后，Lead 在 `projects/<name>/.agents/status/phase` 写入 `B1_DRAFT_READY`。
+
 **Lead 读取审批报告文件**（检查 frontmatter 中的 `result` 字段）：
 - **PASS** -> `git commit`，在 `projects/<name>/.agents/status/phase` 写入 `B1_COMPLETED`，进入 B2
-- **FAIL** -> 再次调用 Research Subagent：
+- **FAIL** -> 在 phase 文件写入 `B1_REVIEW_ROUND_N`（N 为当前轮次号），再次调用 Research Subagent：
   > "QA 审批未通过，审批意见见 `projects/<name>/.agents/reviews/B1-topic-research/round-{N}.md`，请阅读该文件并按意见修改 `topic-research.md`。"
 - 修改后再调 QA 审批（QA 自行扫描 reviews 目录确定轮次编号），如此循环
 - **连续 8 个完整的"修改->审批"循环仍不通过时**：要求 Research Subagent 说明无法满足的具体条件，然后向人类报告并请求介入
@@ -310,9 +331,22 @@ B2 的核心创新：**不固定结构含义，由场景类型驱动**。
 - B3 永远是"产出物规划"（通用）
 
 **Lead 调用 Research Subagent：**
-> "基于已通过的 `projects/<name>/docs/topic-research.md`，参考 `templates/analysis-structure-template.md` 的格式，产出 `projects/<name>/docs/analysis-structure.md`。本项目的场景类型是**[场景类型]**，请按模板中对应场景的指引构建分析结构。"
+> "基于已通过的 `projects/<name>/docs/topic-research.md`，参考 `templates/analysis-structure-[场景].md` 的格式，产出 `projects/<name>/docs/analysis-structure.md`。"
 
-**审批循环同 B1**（QA 写审批报告到 `reviews/B2-analysis-structure/round-{N}.md`，Research Agent 从文件读取修改意见），使用**检查清单 2（分析结构审批）**。通过后在 phase 文件写入 `B2_COMPLETED`。
+**场景-模板映射**（Lead 直接传入对应模板路径，不让 Agent 自行选择）：
+
+| 场景类型 | 模板文件 |
+|---------|---------|
+| 调研分析 | `templates/analysis-structure-research.md` |
+| 策略规划 | `templates/analysis-structure-strategy.md` |
+| 教育培训 | `templates/analysis-structure-education.md` |
+| 写作编辑 | `templates/analysis-structure-writing.md` |
+| 评判审核 | `templates/analysis-structure-evaluation.md` |
+| 日程规划 | `templates/analysis-structure-scheduling.md` |
+
+Research Subagent 返回结果后，Lead 在 phase 文件写入 `B2_DRAFT_READY`。
+
+**审批循环同 B1**（QA 写审批报告到 `reviews/B2-analysis-structure/round-{N}.md`，Research Agent 从文件读取修改意见，不通过时写入 `B2_REVIEW_ROUND_N`），使用**检查清单 2（分析结构审批）**。通过后在 phase 文件写入 `B2_COMPLETED`。
 
 ### 5.5 B3: 产出物规划
 
@@ -321,7 +355,9 @@ B2 的核心创新：**不固定结构含义，由场景类型驱动**。
 **Lead 调用 Research Subagent：**
 > "基于已通过的 `projects/<name>/docs/topic-research.md` 和 `projects/<name>/docs/analysis-structure.md`，参考 `templates/deliverables-plan-template.md` 的格式，产出 `projects/<name>/docs/deliverables-plan.md`。验收标准优先使用机器可自动验证的方式（章节完整性、来源引用数量、字数范围、交叉引用一致性）。纯主观判断项标注为'延迟人工审阅'。"
 
-**审批循环同 B1**（QA 写审批报告到 `reviews/B3-deliverables-plan/round-{N}.md`，Research Agent 从文件读取修改意见），使用**检查清单 3（产出物规划审批）**。通过后在 phase 文件写入 `B3_COMPLETED`。
+Research Subagent 返回结果后，Lead 在 phase 文件写入 `B3_DRAFT_READY`。
+
+**审批循环同 B1**（QA 写审批报告到 `reviews/B3-deliverables-plan/round-{N}.md`，Research Agent 从文件读取修改意见，不通过时写入 `B3_REVIEW_ROUND_N`），使用**检查清单 3（产出物规划审批）**。通过后在 phase 文件写入 `B3_COMPLETED`。
 
 ### 5.6 B4: 工作流设计
 
@@ -330,29 +366,60 @@ B2 的核心创新：**不固定结构含义，由场景类型驱动**。
 **Lead 调用 Design Subagent：**
 > "阅读 `projects/<name>/docs/` 下的所有文档（requirement.md、topic-research.md、analysis-structure.md、deliverables-plan.md），以及元仓库的 `templates/` 目录下所有模板文件。为项目量身定制 Agent Team 工作流，所有产出写入 `projects/<name>/` 目录下。"
 
+Design Subagent 返回结果后，Lead 在 phase 文件写入 `B4_DRAFT_READY`。
+
 **Lead 调用 QA Subagent：**
 > "审批 `projects/<name>/` 下的工作流配置，按**检查清单 4（工作流配置审批）**逐项检查。审批范围：CLAUDE.md、.claude/agents/*.md、.claude/settings.json、.agents/ 目录结构、deferred-human-review.md。"
 
-**审批循环同 B1**（QA 写审批报告到 `reviews/B4-workflow/round-{N}.md`，Design Agent 从文件读取修改意见）。通过后 `git commit`，在 phase 文件写入 `B4_COMPLETED`。
+**审批循环同 B1**（QA 写审批报告到 `reviews/B4-workflow/round-{N}.md`，Design Agent 从文件读取修改意见，不通过时写入 `B4_REVIEW_ROUND_N`）。通过后 `git commit`，在 phase 文件写入 `B4_COMPLETED`。
 
 ### 5.7 检查点与恢复机制
 
-每个子阶段（B1/B2/B3/B4）完成后：
-1. Lead 在 `projects/<name>/.agents/status/phase` 写入当前进度
-2. Lead 做一次 git commit
-
-如果 session 中断，新 session 启动时：
-1. Lead 检查 `projects/<name>/.agents/status/phase` 文件
-2. 从上次完成的检查点之后继续
-3. 已完成的子阶段不重复执行
+每个子阶段内部的关键节点都会更新检查点：
+1. Research/Design Agent 返回结果后，Lead 在 `projects/<name>/.agents/status/phase` 写入 `BN_DRAFT_READY`
+2. QA 审批不通过时，Lead 写入 `BN_REVIEW_ROUND_N`（N 为轮次号）
+3. QA 审批通过后，Lead 写入 `BN_COMPLETED`，做一次 git commit
 
 | 检查点值 | 含义 | 下一步 |
 |---------|------|--------|
 | 文件不存在 | 阶段 B 未开始 | 从 B1 开始 |
+| `B1_DRAFT_READY` | 主题调研文档已产出，待 QA 审批 | 直接调用 QA 审批 |
+| `B1_REVIEW_ROUND_N` | B1 第 N 轮审批完成（FAIL，待修改） | 读取最新审批报告，调用 Research Agent 修改 |
 | `B1_COMPLETED` | 主题调研已通过 | 从 B2 开始 |
+| `B2_DRAFT_READY` | 分析结构文档已产出，待 QA 审批 | 直接调用 QA 审批 |
+| `B2_REVIEW_ROUND_N` | B2 第 N 轮审批完成（FAIL，待修改） | 读取最新审批报告，调用 Research Agent 修改 |
 | `B2_COMPLETED` | 分析结构已通过 | 从 B3 开始 |
+| `B3_DRAFT_READY` | 产出物规划已产出，待 QA 审批 | 直接调用 QA 审批 |
+| `B3_REVIEW_ROUND_N` | B3 第 N 轮审批完成（FAIL，待修改） | 读取最新审批报告，调用 Research Agent 修改 |
 | `B3_COMPLETED` | 产出物规划已通过 | 从 B4 开始 |
+| `B4_DRAFT_READY` | 工作流设计已产出，待 QA 审批 | 直接调用 QA 审批 |
+| `B4_REVIEW_ROUND_N` | B4 第 N 轮审批完成（FAIL，待修改） | 读取最新审批报告，调用 Design Agent 修改 |
 | `B4_COMPLETED` | 工作流设计已通过 | 进入阶段 C |
+
+**恢复逻辑：** 如果 session 中断，新 session 启动时：
+1. Lead 检查 `projects/<name>/.agents/status/phase` 文件
+2. 如果值为 `BN_DRAFT_READY`：文档已产出但未审批，直接调用 QA 审批
+3. 如果值为 `BN_REVIEW_ROUND_M`：扫描 `reviews/BN-xxx/` 目录，读取最新一轮审批报告，根据 result 字段决定：
+   - FAIL -> 调用 Research/Design Agent 修改（附带审批报告路径）
+   - PASS -> 不应出现，但如果出现则直接标记为 BN_COMPLETED
+4. 如果值为 `BN_COMPLETED`：该子阶段已完成，跳到下一子阶段
+
+### 5.8 回溯协议（轻量版）
+
+当 QA 在 B(N) 审批中发现问题根源在 B(M)（M < N）时，QA 在审批报告 frontmatter 中填写 `upstream_concern` 字段。
+
+**触发条件：** `upstream_concern.confidence: high` 时，Lead 暂停当前子阶段，向人类输出回溯预警，提供三个选项：
+1. **回溯到 B(M)** — 重新调研该假设，后续产出物归档后重做
+2. **继续但标记风险** — 在当前文档中标注此风险，阶段 C 执行时验证
+3. **忽略** — QA 判断有误，当前假设成立
+
+**人类选择 [1] 后的归档策略：**
+- `reviews/BN-xxx/` → `reviews/_archived/BN-xxx-rollback-from-B{当前}/`（归档不删除，保留审计轨迹和参考价值）
+- 相关 `docs/` 文件标记为 `needs_revision`（不删除）
+- 检查点回退到 `B{目标阶段}_DRAFT_READY`
+- 从目标阶段重新开始
+
+**`confidence: medium`** 仅记录在审批报告中，不触发升级。
 
 ---
 
@@ -482,9 +549,27 @@ Design Subagent 在设计 Team 的 QA 验收标准时，必须按以下规则分
 - 排版美观度
 - 表述的"味道"和"调性"
 
-### 6.5 最终交付
+### 6.5 整合审核
 
-所有 Phase 完成后，Lead 输出：
+**所有 Phase 完成后、最终交付前**，Lead 调用 QA Subagent 对 `output/` 目录下所有产出物做一次跨文档整体性审查。
+
+**整合审核的检查项：**
+- **论述一致性**：不同文档/章节对同一事实的表述是否一致（如 A 章说"增长放缓"，B 章说"持续高增长"）
+- **重复内容**：不同文档/章节是否有大段重复
+- **逻辑衔接**：上一章的结论是否被下一章正确引用和承接
+- **术语一致性**：跨文档的术语使用是否统一（对照 glossary）
+- **交叉引用准确性**：文档间的交叉引用是否指向正确位置
+
+**流程：**
+1. Lead 生成 `.agents/test-cases/integration-test-cases.md`（整合审核用例）
+2. Lead 调用 QA Subagent 执行整合审核，问题写入 `.agents/issues/integration/`
+3. 如有 Critical 或 Major 级别问题，Lead 通过 SendMessage 通知对应 Writer 修复
+4. 修复后再次调用 QA 整合审核，循环直到通过
+5. 通过后在 phase 文件写入 `C_INTEGRATION_REVIEWED`，git commit
+
+### 6.6 最终交付
+
+整合审核通过后，Lead 输出：
 
 ```
 项目完成
@@ -844,7 +929,7 @@ session 中断后从上次完成的 Phase 之后继续。
 ---
 name: <topic>-writer
 description: 负责 [项目名] 的 [写作范围描述]
-tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
+tools: Read, Write, Edit, Glob, Grep, Bash
 model: opus
 maxTurns: 100  # Design Subagent 可根据项目复杂度调整（范围 80-150）
 effort: max
@@ -865,15 +950,17 @@ effort: max
 - 术语表：.agents/style-guide/glossary.md
 - 引用格式：.agents/style-guide/citation.md
 
-## 调研补充（严格优先级规则）
+## 信息来源规则（严格优先级）
 
 写作中使用事实和数据时，必须按以下优先级：
 1. **首选**：docs/topic-research.md 中已有的事实（这是经过 QA 审批的权威来源）
 2. **次选**：docs/analysis-structure.md 中的分析结论
-3. **补充调研**：仅当以上文档未覆盖时，使用 WebSearch/WebFetch 补充
-   - 补充的事实必须标注为**"补充来源"**（区别于已审批来源）
-   - QA 审核时会重点关注这些新增来源的准确性
-   - 格式：`[补充来源] 事实内容 —— 来源: URL/文献名`
+3. **次选**：docs/supplementary-research.md 中的补充调研结果（如果存在）
+
+**禁止自行使用 WebSearch/WebFetch 补充调研。** 如果发现 topic-research.md 未覆盖你需要的信息，通过 SendMessage 向 Lead 报告：
+> "写作 `output/xxx.md` 的 [章节名] 时，需要以下信息但 topic-research.md 未覆盖：[具体信息需求]。请求补充调研。"
+
+Lead 收到后统一决定是否补充调研，补充的信息集中写入 `docs/supplementary-research.md` 供所有 Writer 共享。这保持了信息的单一可信来源。
 
 ## 参考文档
 
@@ -978,7 +1065,7 @@ Issue 文件内容（注意 status frontmatter）：
 | Design Agent | opus, 50 turns | 理解项目特征生成复杂配置 |
 | QA Agent（元仓库） | sonnet, 60 turns | 阶段 B 审批是结构化检查清单任务，sonnet 胜任；60 turns 覆盖 4 套检查清单 x 8 轮 |
 | QA Agent（项目） | opus, 60 turns, +WebSearch/WebFetch | 知识工作的事实核查和逻辑审查是深度推理任务，sonnet 不够；60 turns 覆盖大型项目多文档审核 |
-| Writer Agent | opus, 80-150 turns, +WebSearch/WebFetch | 写作需要深度推理 + 可能需要补充调研 |
+| Writer Agent | opus, 80-150 turns, 无 WebSearch | 写作需要深度推理；补充调研由 Lead 集中管理，写入 supplementary-research.md |
 | 人类介入策略 | 需求阶段识别 -> 设计阶段最大化自动化 -> 不影响产出的延迟到最后 | 全自动化核心原则 |
 | Git | Lead 独占 | 集中管理 |
 | 项目 git | projects/<name>/ 独立 git init | 不污染元仓库 |
@@ -987,6 +1074,16 @@ Issue 文件内容（注意 status frontmatter）：
 | CLAUDE.md 职责分离 | 元仓库只管 A+B；项目管 C | 避免上下文冲突 |
 | 写作规范 | .agents/style-guide/ 独立目录 | 确保多 Writer Agent 产出风格统一 |
 | 产出物目录 | output/ | 与 docs/（规划文档）分离，清晰区分"过程"和"交付" |
+
+### 刻意不做的事
+
+| 决策项 | 选择 | 理由 |
+|--------|------|------|
+| B→C 切换 | 手动（人类门控） | 人类在 token 大量消耗前最后一次全面审视的机会——审阅 B 阶段产出、确认方向、检查项目配置 |
+| Writer 自行补充调研 | 禁止（由 Lead 集中管理） | Writer 绕过调研流程自行 WebSearch 会破坏信息治理——未经审批的信息混入已审批产出，多个 Writer 可能对同一话题补充矛盾信息 |
+| 自动回溯 | 不做（v1） | 实现复杂度高（下游产出物失效、回溯死循环风险），先用"QA 标注 upstream_concern + 人类决策"兜底 |
+| Token 预算硬限制 | 不设 | 8 轮上限本身就是成本控制；不同任务复杂度差异大，武断的预算限制会打断简单任务 |
+| B2 场景模板合并 | 拆分为独立文件 | if/else 注释让 Agent 选择结构脆弱且易混搭，Lead 直接传入对应模板路径更可靠 |
 
 ---
 
@@ -1008,15 +1105,21 @@ Issue 文件内容（注意 status frontmatter）：
 | 5 | `.claude/agents/design-agent.md` | Subagent: 工作流设计+人类判断最小化 (opus, 50 turns) |
 | 6 | `.claude/agents/qa-agent.md` | Subagent: 4 套审批检查清单，严格模式 (sonnet, 60 turns) |
 
-### 模板文件（6 个）
+### 模板文件（12 个）
 
 | # | 文件路径 | 说明 |
 |---|---------|------|
 | 7 | `templates/topic-research-template.md` | B1: 主题调研文档格式 |
-| 8 | `templates/analysis-structure-template.md` | B2: 分析结构模板（含多场景适配指引） |
+| 8 | `templates/analysis-structure-template.md` | B2: 分析结构模板索引 |
+| 8a | `templates/analysis-structure-research.md` | B2: 调研分析场景模板 |
+| 8b | `templates/analysis-structure-strategy.md` | B2: 策略规划场景模板 |
+| 8c | `templates/analysis-structure-education.md` | B2: 教育培训场景模板 |
+| 8d | `templates/analysis-structure-writing.md` | B2: 写作编辑场景模板 |
+| 8e | `templates/analysis-structure-evaluation.md` | B2: 评判审核场景模板 |
+| 8f | `templates/analysis-structure-scheduling.md` | B2: 日程规划场景模板 |
 | 9 | `templates/deliverables-plan-template.md` | B3: 产出物规划格式 |
 | 10 | `templates/project-claude-md-template.md` | B4: 项目 CLAUDE.md 参考模板 |
-| 11 | `templates/writer-agent-template.md` | B4: Writer Agent 配置参考 |
+| 11 | `templates/writer-agent-template.md` | B4: Writer Agent 配置参考（无 WebSearch，补充调研由 Lead 集中管理） |
 | 12 | `templates/qa-agent-template.md` | B4: 项目 QA Agent 配置参考（聚焦内容审核而非代码验收） |
 
 ### 实施顺序

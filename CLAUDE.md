@@ -68,13 +68,14 @@
 
 1. 调用 **planning-agent** Subagent：
    > "阅读 `projects/<name>/docs/requirement.md`，参考 `templates/technical-research-template.md` 的格式，产出 `projects/<name>/docs/technical-research.md`。使用 WebSearch 调研技术方案，不要凭空推测。"
-2. 调用 **qa-agent** Subagent：
+2. Planning Agent 返回结果后，在 `projects/<name>/.agents/status/phase` 写入 `B1_DRAFT_READY`
+3. 调用 **qa-agent** Subagent：
    > "审批 `projects/<name>/docs/technical-research.md`，按**检查清单 1（技术调研审批）**逐项检查。同时阅读 `projects/<name>/docs/requirement.md` 作为参考。审批报告写入 `projects/<name>/.agents/reviews/B1-technical-research/round-{N}.md`。"
-3. Lead 读取审批报告文件，检查 frontmatter 中的 `result` 字段判断通过/不通过：
+4. Lead 读取审批报告文件，检查 frontmatter 中的 `result` 字段判断通过/不通过：
    - **通过**（`result: PASS`）→ `git commit`，在 `projects/<name>/.agents/status/phase` 写入 `B1_COMPLETED`，进入 B2
-   - **不通过**（`result: FAIL`）→ 再次调用 planning-agent，**告知审批意见文件路径**：
-     > "QA 审批未通过，审批意见见 `projects/<name>/.agents/reviews/B1-technical-research/round-{N}.md`，请阅读该文件并按意见修改 `technical-research.md`。"
-   - 修改后再调 qa-agent 审批（轮次 N 递增），如此循环
+   - **不通过**（`result: FAIL`）→ 在 `projects/<name>/.agents/status/phase` 写入 `B1_REVIEW_ROUND_N`（N 为当前轮次），然后再次调用 planning-agent，**告知最新审批报告文件路径**：
+     > "QA 审批未通过，审批报告见 `projects/<name>/.agents/reviews/B1-technical-research/round-{N}.md`。只需读取该文件的 frontmatter 即可获取所有待修复问题（blocking_issues + carry_forward_from_last_round），按意见修改 `technical-research.md`。"
+   - 修改完成后写入 `B1_DRAFT_READY`，再调 qa-agent 审批（轮次 N 递增），如此循环
    - **连续 8 个完整的"修改→审批"循环仍不通过时**：要求 planning-agent 说明无法满足的具体条件，然后向人类报告并请求介入
 
 **审批报告 frontmatter 格式：**
@@ -86,16 +87,39 @@ round: 1
 phase: B1
 reviewed_file: docs/technical-research.md
 date: YYYY-MM-DD
+blocking_issues:          # result 为 FAIL 时列出本轮发现的阻塞问题
+  - id: B1-R1-01          # ID 规则: B{阶段}-R{轮次}-{序号}
+    description: "候选方案缺少性能对比数据"
+    severity: major        # major / minor
+  - id: B1-R1-02
+    description: "依赖版本未锁定"
+    severity: minor
+resolved_since_last_round: # 上轮存在、本轮已解决的问题（首轮为空列表）
+  - ref: B1-R0-01          # 引用上轮的 issue ID
+    description: "技术栈兼容性已补充"
+carry_forward_from_last_round: # 上轮存在、本轮仍未解决的问题（首轮为空列表）
+  - ref: B1-R0-03
+    description: "错误处理策略未定义"
 ---
 ```
+
+**ID 规则**: `B{阶段}-R{轮次}-{序号}`，如 `B1-R3-01`。
+
+**字段说明：**
+- `blocking_issues`：本轮审批发现的所有阻塞问题。`result: PASS` 时为空列表。
+- `resolved_since_last_round`：上轮审批中存在但本轮已被修复的问题，`ref` 引用上轮的 issue ID。首轮审批时为空列表。
+- `carry_forward_from_last_round`：上轮审批中存在且本轮仍未解决的问题。首轮审批时为空列表。
+
+**Planning Agent 只需读取最新一份审批报告的 frontmatter** 即可获取所有必要上下文：`blocking_issues` 告知当前需要修复的问题，`carry_forward_from_last_round` 告知历史遗留未解决的问题。不需要读取历史审批报告。
 
 ### B2: 技术架构
 
 流程同 B1，但：
 - 调用 planning-agent 时指令改为：
   > "基于已通过的 `projects/<name>/docs/technical-research.md`，参考 `templates/structure-template.md` 的格式，产出 `projects/<name>/docs/structure.md`。"
+- Planning Agent 返回结果后，写入 `B2_DRAFT_READY`
 - 调用 qa-agent 时使用**检查清单 2（技术架构审批）**，审批报告写入 `.agents/reviews/B2-structure/round-{N}.md`
-- 不通过时告知 planning-agent 审批意见文件路径（同 B1 模式）
+- 不通过时写入 `B2_REVIEW_ROUND_N`，然后告知 planning-agent 审批意见文件路径（同 B1 模式），修改完成后写入 `B2_DRAFT_READY`
 - 通过后在 phase 文件写入 `B2_COMPLETED`
 
 ### B3: 开发路线图
@@ -103,18 +127,20 @@ date: YYYY-MM-DD
 流程同 B1，但：
 - 调用 planning-agent 时指令改为：
   > "基于已通过的 `projects/<name>/docs/technical-research.md` 和 `projects/<name>/docs/structure.md`，参考 `templates/roadmap-template.md` 的格式，产出 `projects/<name>/docs/roadmap.md`。验收标准优先使用机器可自动验证的方式。'需人类判断且不影响后续开发'的项标注为'延迟人工验收'。"
+- Planning Agent 返回结果后，写入 `B3_DRAFT_READY`
 - 调用 qa-agent 时使用**检查清单 3（路线图审批）**，审批报告写入 `.agents/reviews/B3-roadmap/round-{N}.md`
-- 不通过时告知 planning-agent 审批意见文件路径（同 B1 模式）
+- 不通过时写入 `B3_REVIEW_ROUND_N`，然后告知 planning-agent 审批意见文件路径（同 B1 模式），修改完成后写入 `B3_DRAFT_READY`
 - 通过后在 phase 文件写入 `B3_COMPLETED`
 
 ### B4: 工作流设计
 
 1. 调用 **design-agent** Subagent：
    > "阅读 `projects/<name>/docs/` 下的所有文档（requirement.md、technical-research.md、structure.md、roadmap.md），以及元仓库的 `templates/` 目录下所有模板文件。为项目量身定制 Agent Team 工作流，所有产出写入 `projects/<name>/` 目录下。"
-2. 调用 **qa-agent** Subagent：
+2. Design Agent 返回结果后，在 `projects/<name>/.agents/status/phase` 写入 `B4_DRAFT_READY`
+3. 调用 **qa-agent** Subagent：
    > "审批 `projects/<name>/` 下的工作流配置，按**检查清单 4（工作流配置审批）**逐项检查。审批范围：CLAUDE.md、.claude/agents/*.md、.claude/settings.json、.agents/ 目录结构、deferred-human-review.md。审批报告写入 `projects/<name>/.agents/reviews/B4-workflow/round-{N}.md`。"
-3. 审批循环同 B1（qa-agent 打回时告知 design-agent 审批意见文件路径，design-agent 自行读取修改）
-4. 通过后 `git commit`，在 phase 文件写入 `B4_COMPLETED`
+4. 审批循环同 B1（qa-agent 打回时写入 `B4_REVIEW_ROUND_N`，告知 design-agent 审批意见文件路径，design-agent 自行读取修改，修改完成后写入 `B4_DRAFT_READY`）
+5. 通过后 `git commit`，在 phase 文件写入 `B4_COMPLETED`
 
 ### 检查点恢复
 
@@ -123,10 +149,50 @@ date: YYYY-MM-DD
 | 检查点值 | 含义 | 下一步 |
 |---------|------|--------|
 | 文件不存在 | 阶段 B 未开始 | 从 B1 开始 |
+| `B1_DRAFT_READY` | 技术调研文档已产出，待审批 | 直接调用 QA 审批 |
+| `B1_REVIEW_ROUND_N` | B1 第 N 轮审批完成（FAIL） | 扫描 reviews/ 读取最新审批报告，调用 Planning Agent 修改 |
 | `B1_COMPLETED` | 技术调研已通过 | 从 B2 开始 |
+| `B2_DRAFT_READY` | 技术架构文档已产出，待审批 | 直接调用 QA 审批 |
+| `B2_REVIEW_ROUND_N` | B2 第 N 轮审批完成（FAIL） | 扫描 reviews/ 读取最新审批报告，调用 Planning Agent 修改 |
 | `B2_COMPLETED` | 技术架构已通过 | 从 B3 开始 |
+| `B3_DRAFT_READY` | 路线图已产出，待审批 | 直接调用 QA 审批 |
+| `B3_REVIEW_ROUND_N` | B3 第 N 轮审批完成（FAIL） | 扫描 reviews/ 读取最新审批报告，调用 Planning Agent 修改 |
 | `B3_COMPLETED` | 路线图已通过 | 从 B4 开始 |
+| `B4_DRAFT_READY` | 工作流设计已产出，待审批 | 直接调用 QA 审批 |
+| `B4_REVIEW_ROUND_N` | B4 第 N 轮审批完成（FAIL） | 扫描 reviews/ 读取最新审批报告，调用 Design Agent 修改 |
 | `B4_COMPLETED` | 工作流设计已通过 | 进入阶段 C |
+
+**恢复时的扫描逻辑：**
+
+当检查点值为 `BN_REVIEW_ROUND_M` 时，Lead 需扫描 `projects/<name>/.agents/reviews/BN-xxx/` 目录，读取最新一轮审批报告文件，根据 frontmatter 中的 `result` 字段决定下一步：
+- `FAIL` → 调用对应 Agent 修改（附带审批报告路径）
+- `PASS` → 不应出现（PASS 时应已写入 BN_COMPLETED），但如果出现则直接标记为 BN_COMPLETED
+
+### 回溯协议（轻量版）
+
+当 QA 审批报告的 frontmatter 中包含 `upstream_concern` 且 `confidence: high` 时，Lead 暂停当前子阶段，向人类输出以下信息：
+
+```
+回溯预警
+
+QA 在 B{当前阶段}（{阶段名}）审批中发现 B{目标阶段}（{阶段名}）的假设可能有误：
+  "{suspect_assumption 内容}"
+
+当前选项：
+  [1] 回溯到 B{目标阶段} — 重新调研/设计该假设，后续产出物归档后重做
+  [2] 继续但标记风险 — 在当前文档中标注此风险，阶段 C 实施时验证
+  [3] 忽略 — QA 判断有误，当前假设成立
+
+请选择 [1/2/3]：
+```
+
+**人类选择 [1] 后的处理：**
+1. 归档当前及后续已完成的子阶段产出物：`reviews/BN-xxx/` → `reviews/_archived/BN-xxx-rollback-from-B{当前}/`
+2. 相关 `docs/` 文件标记为 `needs_revision`（不删除）
+3. 检查点回退到 `B{目标阶段}_DRAFT_READY`
+4. 从目标阶段重新开始
+
+`confidence: medium` 的 upstream_concern 仅记录在审批报告中，不触发升级。
 
 ---
 

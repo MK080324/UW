@@ -37,6 +37,25 @@ Lead 在每个 Phase 开始前，按以下格式定义本 Phase 的所有接口�
 - 错误: 可能的错误类型及含义
 ```
 
+### 文件写入范围
+
+Lead 在每个 Phase 的接口文件中同时定义各 Agent 的文件写入范围：
+
+```markdown
+## 文件写入范围
+
+| Agent | 可写入路径 | 禁止触碰 |
+|-------|-----------|----------|
+| Agent-1 | src/module-a/**, tests/module-a/** | src/shared/** |
+| Agent-2 | src/module-b/**, tests/module-b/** | src/shared/** |
+| Lead | src/shared/**, interfaces.md | — |
+```
+
+**规则：**
+- 公共文件（`src/shared/**` 等）只有 Lead 能修改
+- Agent 需要修改公共文件时，通过 SendMessage 向 Lead 申请
+- 开发 Agent 只能修改被分配的文件范围内的文件
+
 开发 Agent 必须严格按此接口开发。接口变更必须通过 SendMessage 通知相关 Agent 和 Lead，等待确认后才能继续。
 
 ## Agent Teams 工作流
@@ -54,8 +73,8 @@ Lead 在每个 Phase 开始前，按以下格式定义本 Phase 的所有接口�
 
 每个 Phase 按以下步骤执行：
 
-1. **Lead 定义任务、接口和测试用例** — 按接口定义模板写明本 Phase 的所有接口，发布到 `.agents/interfaces/`；同时生成 `.agents/test-cases/phase-N-test-cases.md`（必须覆盖 roadmap 中该 Phase 的所有验收标准）
-2. **并行开发** — 开发 Agent 按接口并行实现各自部分（可参考 test-case 理解验收预期）
+1. **Lead 定义任务、接口、文件写入范围和测试用例** — 按接口定义模板写明本 Phase 的所有接口，发布到 `.agents/interfaces/`；在接口文件中同时定义**各 Agent 的文件写入范围**（见下方格式）；同时生成 `.agents/test-cases/phase-N-test-cases.md`（必须覆盖 roadmap 中该 Phase 的所有验收标准）
+2. **并行开发** — 开发 Agent 按接口并行实现各自部分，**仅修改被分配的文件范围内的文件**（可参考 test-case 理解验收预期）
 3. **接口沟通** — 如需调整接口，Agent 必须通过 SendMessage 通知相关方和 Lead，等待确认后才能继续
 4. **完成通知** — 每个 Agent 完成后通过 SendMessage 向 Lead 发送完成通知
 5. **QA 验收** — Lead 收到所有开发 Agent 的完成通知后，调用 QA Subagent 验收。QA 按 `.agents/test-cases/phase-N-test-cases.md` 逐条执行测试，发现的问题写入 `.agents/issues/phase-N/` 目录
@@ -94,6 +113,11 @@ C_COMPLETED
 ```
 
 如果 session 中断，新 session 启动时 Lead 先检查此文件，从上次完成的 Phase 之后继续。
+
+**恢复时的扫描逻辑：** 阶段 C 使用 Phase 级别检查点。如果 session 中断时某个 Phase 正在进行中（即检查点停留在上一个 Phase 的 `C_PHASE_N_COMPLETED`），Lead 需扫描 `.agents/issues/phase-{N+1}/` 目录判断当前 Phase 的进展状态：
+- 如果 issues 目录不存在 → Phase 尚未开始 QA 验收，需重新分配任务给开发 Agent
+- 如果存在 issues 且有 `open` 状态的 issue → 上轮 QA 验收未通过，通知对应 Agent 继续修复
+- 如果所有 issue 均为 `resolved` → 调用 QA 重新验收
 
 ## 技术要求
 

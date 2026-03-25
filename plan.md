@@ -226,22 +226,55 @@ Lead 在主对话中直接完成，不调用任何 Subagent。
 
 ### 5.3 检查点与恢复机制
 
-每个子阶段（B1/B2/B3/B4）完成后：
-1. Lead 在 `projects/<name>/.agents/status/phase` 写入当前进度（如 `B2_COMPLETED`）
-2. Lead 做一次 git commit
+每个子阶段（B1/B2/B3/B4）内部有多个步骤，检查点细粒度覆盖这些步骤，避免 session 中断后从头重跑整个子阶段。
 
-如果 session 中断，新 session 启动时：
-1. Lead 检查 `projects/<name>/.agents/status/phase` 文件
-2. 从上次完成的检查点之后继续
-3. 已完成的子阶段不重复执行
+**写入时机：**
+1. Planning/Design Agent 产出文档后，Lead 写入 `BN_DRAFT_READY`
+2. QA 审批不通过时，Lead 写入 `BN_REVIEW_ROUND_N`（N 为当前轮次）
+3. QA 审批通过后，Lead 写入 `BN_COMPLETED`，做一次 git commit
 
 检查点值定义：
 ```
-B1_COMPLETED  → 技术调研已通过
-B2_COMPLETED  → 技术架构已通过
-B3_COMPLETED  → 路线图已通过
-B4_COMPLETED  → 工作流设计已通过，可进入阶段 C
+B1_DRAFT_READY       → 技术调研文档已产出，待 QA 审批
+B1_REVIEW_ROUND_N    → B1 第 N 轮审批完成（FAIL，待修改）
+B1_COMPLETED         → 技术调研已通过
+B2_DRAFT_READY       → 技术架构文档已产出，待 QA 审批
+B2_REVIEW_ROUND_N    → B2 第 N 轮审批完成（FAIL，待修改）
+B2_COMPLETED         → 技术架构已通过
+B3_DRAFT_READY       → 路线图已产出，待 QA 审批
+B3_REVIEW_ROUND_N    → B3 第 N 轮审批完成（FAIL，待修改）
+B3_COMPLETED         → 路线图已通过
+B4_DRAFT_READY       → 工作流设计已产出，待 QA 审批
+B4_REVIEW_ROUND_N    → B4 第 N 轮审批完成（FAIL，待修改）
+B4_COMPLETED         → 工作流设计已通过，可进入阶段 C
 ```
+
+**恢复逻辑：**
+
+如果 session 中断，新 session 启动时：
+1. Lead 检查 `projects/<name>/.agents/status/phase` 文件
+2. 如果值为 `BN_DRAFT_READY`：文档已产出但未审批，直接调用 QA 审批
+3. 如果值为 `BN_REVIEW_ROUND_M`：扫描 `reviews/BN-xxx/` 目录，读取最新一轮审批报告，根据 result 字段决定：
+   - FAIL → 调用 Planning/Design Agent 修改（附带审批报告路径）
+   - PASS → 这种情况不应出现（PASS 时应已写入 BN_COMPLETED），但如果出现则直接标记为 BN_COMPLETED
+4. 如果值为 `BN_COMPLETED`：该子阶段已完成，跳到下一子阶段
+
+### 5.4 回溯协议（轻量版）
+
+当 QA 在 B(N) 审批中发现问题根源在 B(M)（M < N）时，QA 在审批报告 frontmatter 中填写 `upstream_concern` 字段。
+
+**触发条件：** `upstream_concern.confidence: high` 时，Lead 暂停当前子阶段，向人类输出回溯预警，提供三个选项：
+1. **回溯到 B(M)** — 重新调研/设计该假设，后续产出物归档后重做
+2. **继续但标记风险** — 在当前文档中标注此风险，阶段 C 实施时验证
+3. **忽略** — QA 判断有误，当前假设成立
+
+**人类选择 [1] 后的归档策略：**
+- `reviews/BN-xxx/` → `reviews/_archived/BN-xxx-rollback-from-B{当前}/`（归档不删除，保留审计轨迹和参考价值）
+- 相关 `docs/` 文件标记为 `needs_revision`（不删除）
+- 检查点回退到 `B{目标阶段}_DRAFT_READY`
+- 从目标阶段重新开始
+
+**`confidence: medium`** 仅记录在审批报告中，不触发升级。
 
 ---
 
@@ -418,6 +451,15 @@ Design Subagent 在设计 Team 的 QA 验收标准时，必须按以下规则分
 | 检查点恢复 | .agents/status/phase 文件 | 覆盖阶段 B（B1-B4）和阶段 C（每个 Phase），session 中断后可恢复 |
 | 阶段 C QA 角色 | Subagent（由 Lead 按需调用，不是 teammate） | QA 验收是串行的，常驻 teammate 在等待期间空耗 token |
 | CLAUDE.md 职责分离 | 元仓库 CLAUDE.md 只管阶段 A+B；项目 CLAUDE.md 管阶段 C | 避免上下文冲突 |
+
+### 刻意不做的事
+
+| 决策项 | 选择 | 理由 |
+|--------|------|------|
+| B→C 切换 | 手动（人类门控） | 人类在 token 大量消耗前最后一次全面审视的机会——审阅 B 阶段产出、确认方向、检查项目配置 |
+| 阶段 C 代码审查 | 不做（留给人类） | Agent 对设计模式和代码质量的判断不可靠，代码审查属于人类专业判断范畴；可加 semgrep 等工具做安全扫描，但不加"代码审查 Agent" |
+| 自动回溯 | 不做（v1） | 实现复杂度高（下游产出物失效、回溯死循环风险），先用"QA 标注 upstream_concern + 人类决策"兜底 |
+| Token 预算硬限制 | 不设 | 8 轮上限本身就是成本控制；不同任务复杂度差异大，武断的预算限制会打断简单任务 |
 
 ---
 
